@@ -1,0 +1,19 @@
+# Frontend
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# OS
+.DS_Store
+
+# Rust / Tauri
+src-tauri/target
+src-tauri/gen
