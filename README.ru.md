@@ -13,9 +13,9 @@
 
 [English](README.md) · **Русский**
 
-> Десктопный просмотрщик магазина Valorant на Tauri 2.  
+> Десктопный вьювер магазина Valorant на Tauri 2.  
 > Смотри ежедневный магазин и Ночной рынок, не запуская игру.  
-> Весь бэкенд для Riot API написан на **Rust** — никакого Python, никакого сервера, никаких холодных стартов.
+> Весь бэкенд для Riot API написан на **Rust**.
 
 ---
 
@@ -76,14 +76,14 @@ npm run tauri dev
 GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri dev
 ```
 
-Для продакшен-бинаря можно сделать небольшой shell-обёртку:
+Для продакшен-бинаря можно сделать небольшую shell-обёртку:
 
 ```bash
 #!/usr/bin/env bash
 GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 exec "$(dirname "$0")/valorant-store" "$@"
 ```
 
-Или добавь переменные в строку `Exec=` в `.desktop`-файле лаунчера.
+Или добавить переменные в строку `Exec=` в `.desktop`-файле лаунчера.
 
 ### Сборка для продакшена
 
