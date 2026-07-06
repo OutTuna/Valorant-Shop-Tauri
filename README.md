@@ -1,158 +1,161 @@
 # Valorant Store — Tauri Edition
 
-Портированная версия [Valorant-Shop-Checker](https://github.com/OutTuna/Valorant-Shop-Checker)
-на **Vite + React + Tauri 2**. Python/FastAPI бэкенд полностью убран — вся
-логика похода в Riot API (token-login, storefront, wallet, night market)
-переписана на Rust и живёт прямо внутри приложения как Tauri-команды.
+[![Tauri](https://img.shields.io/badge/Tauri-2-24C8D8?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
+[![Rust](https://img.shields.io/badge/Rust-1.77%2B-CE422B?style=flat-square&logo=rust&logoColor=white)](https://rustup.rs)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev)
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)](LICENSE)
 
-Никакого `uvicorn`, никакого второго процесса, никакого порта `:8000`.
-Один бинарник = один процесс.
+[![Windows](https://img.shields.io/badge/Windows-✔%20tested-0078D4?style=flat-square&logo=windows&logoColor=white)]()
+[![macOS](https://img.shields.io/badge/macOS-✔%20tested-000000?style=flat-square&logo=apple&logoColor=white)]()
+[![Linux X11](https://img.shields.io/badge/Linux_X11-✔%20tested%20on%20Nobara-FCC624?style=flat-square&logo=linux&logoColor=black)]()
 
-Также подключена кастомная URL-схема `valorant-store://` через
-`tauri-plugin-deep-link` — подробности и честные ограничения см. в разделе
-["Как теперь работает вход"](#как-теперь-работает-вход) ниже.
+**English** · [Русский](README.ru.md)
 
-## Что изменилось относительно оригинала
+> A desktop Valorant shop viewer built with Tauri 2.  
+> Check your daily shop and Night Market without launching the game.  
+> The entire Riot API backend is written in **Rust** — no Python, no server, no cold starts.
 
-- **Next.js → Vite + React Router.** Next был не нужен: SSR/API routes тут
-  не используются, а App Router плохо дружит со статическим Tauri-рендерингом.
-  `HashRouter` вместо `BrowserRouter`, потому что фронтенд раздаётся из
-  `tauri://localhost`, а не с настоящего сервера с history-fallback.
-- **FastAPI (`backend/main.py`) → Rust (`src-tauri/src/valorant.rs`).**
-  Перенесена ровно та часть логики, которая нужна: `token-login` (вход по
-  access token / session id, который ты вставляешь руками или через
-  редирект из браузера) → storefront v3/v2 fallback → wallet → offer prices
-  → skin catalog → сборка `ShopSession`.
-- **`local-login` (чтение lockfile Riot Client) убран целиком** — по твоей
-  просьбе, раз ты используешь вход по session id/token, а не через
-  локальный клиент. Если он понадобится в будущем, его придётся добавить
-  отдельно как Tauri-команду, читающую lockfile через `std::fs` (это уже не
-  будет ограничено `127.0.0.1`, как было в Python-версии — Tauri и так
-  работает локально).
-- **`/api/login` (логин по username/password) тоже убран** — текущий поток
-  входа через сам Riot (браузер → редирект → access_token) безопаснее и
-  не требует пересылки пароля куда-либо вообще.
+---
 
-## Структура проекта
+## Features
 
-```
-.
-├── index.html              # точка входа Vite
-├── src/
-│   ├── main.tsx             # React root, провайдеры, роутинг
-│   ├── index.css            # перенесённый globals.css (темы, токены)
-│   ├── context/              # ThemeContext, LanguageContext — без изменений
-│   └── pages/
-│       ├── HomePage.tsx        # магазин (бывший app/page.tsx)
-│       ├── LoginPage.tsx       # вход (token/session id + deep-link подсказка)
-│       ├── RedirectPage.tsx    # опциональный авто-редирект флоу (см. ниже)
-│       └── DeepLinkListener.tsx # ловит valorant-store:// на старте и в рантайме
-│   └── lib/
-│       ├── valorant.ts         # типы ShopSession/ShopItem + sessionStorage
-│       └── deepLink.ts         # парсинг access_token из deep-link URL
-└── src-tauri/
-    ├── Cargo.toml
-    ├── tauri.conf.json
-    ├── capabilities/default.json
-    └── src/
-        ├── main.rs           # точка входа
-        ├── lib.rs             # сборка Tauri Builder, регистрация плагинов/команд
-        ├── commands.rs        # #[tauri::command] token_login
-        ├── valorant.rs        # вся Riot API логика (порт _build_shop_payload)
-        ├── types.rs           # ShopSession/ShopItem/Player (serde, camelCase)
-        └── error.rs           # RiotError → String для границы Tauri
-```
+- **Daily shop** with live countdown timers that survive app restarts
+- **Night Market** support (shown automatically when active)
+- Three themes — Dark · White · Catppuccin Mocha
+- Four UI languages — 🇺🇸 EN · 🇺🇦 UK · 🇷🇺 RU · 🇵🇱 PL
+- Deep-link auto-login via the `valorant-store://auth` scheme
+- Session persisted to disk — no re-login after restart until the shop resets
+- Your token never leaves the device — all requests go directly to Riot's API
 
-## Установка и запуск
+---
 
-### Требования
+## How it differs from the original web version
 
-- Node.js 20+
-- Rust **1.77.2+** (Tauri 2 требует свежий тулчейн — ставь через
-  [rustup](https://rustup.rs), не через `apt`, в Ubuntu/Debian репах Rust
-  обычно устаревший)
-- Системные зависимости Tauri для твоей ОС — см.
-  [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/)
-  (на Linux это `webkit2gtk`, `libayatana-appindicator3-dev` и т.д.)
-- На Linux для регистрации схемы `valorant-store://` нужен `xdg-utils`
-  (обычно уже стоит); схема прописывается автоматически при первом
-  запуске собранного бинарника/AppImage.
+| | Original (Next.js + FastAPI) | This repo (Tauri 2) |
+|---|---|---|
+| Backend | Python / FastAPI | Rust (reqwest, tokio) |
+| Frontend | Next.js | Vite + React 19 |
+| Deployment | Vercel + Render | Desktop app, nothing to deploy |
+| Session storage | sessionStorage (tab-scoped) | `tauri-plugin-store` (persists to disk) |
+| Lockfile login | ✔ (localhost only) | — (not needed for desktop use) |
+| Region storage | sessionStorage | Persistent, restored on startup |
 
-### Шаги
+---
+
+## Requirements
+
+- [Node.js](https://nodejs.org) ≥ 18
+- [Rust](https://rustup.rs) stable toolchain
+- [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS
+
+---
+
+## Getting started
 
 ```bash
+git clone https://github.com/OutTuna/Valorant-Shop-Tauri
+cd Valorant-Shop-Tauri
 npm install
-npm run tauri icon path/to/your-1024x1024-icon.png   # сгенерирует src-tauri/icons/*
-npm run tauri dev      # окно приложения + hot reload
-npm run tauri build    # production-бинарник/инсталлятор
 ```
 
-`npm run tauri icon` нужно выполнить один раз — в репозитории нет
-сгенерированных иконок, `tauri.conf.json` лишь ссылается на ожидаемые пути.
+### Run in development
 
-## Как теперь работает вход
+```bash
+npm run tauri dev
+```
 
-1. Жмёшь кнопку "войти через Riot" → открывается официальная страница
-   Riot в системном браузере (`auth.riotgames.com`).
-2. После входа Riot редиректит на `https://playvalorant.com/opt_in#access_token=...`.
-3. Дальше два варианта:
-   - **Вручную:** копируешь этот URL (или просто `access_token` из него) и
-     вставляешь в поле на странице логина.
-   - **Через deep link:** в адресной строке браузера заменяешь
-     `https://playvalorant.com/opt_in` на `valorant-store://auth` и жмёшь
-     Enter. ОС передаёт ссылку приложению — оно само вызывает
-     `token_login` и логинит тебя, без копипасты в textarea.
-4. Дальше в обоих случаях фронтенд зовёт `invoke("token_login", { accessToken, region })` —
-   всё происходит в Rust, без сети до твоей машины и без
-   собственного сервера где-либо.
-5. Результат (`ShopSession`) кладётся в `sessionStorage`, как и раньше —
-   просто теперь источник данных не `http://127.0.0.1:8000`, а сам бинарник.
+#### Linux — Nobara / Wayland workaround
 
-### ⚠️ Честно про deep-link и его реальный предел
+On Nobara, Fedora 40+, and other distros running WebKit2GTK under Wayland,
+the default renderer may produce a blank window or crash.
+Force X11 mode with:
 
-Важно понимать, что именно делает deep link, а чего не делает.
+```bash
+GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri dev
+```
 
-Riot Games у себя зарегистрировал OAuth-клиента `play-valorant-web-prod`
-(тот, через который логинится и эта аппа, и оригинальный
-`Valorant-Shop-Checker`, и почти все сторонние шоп-чекеры) с
-**фиксированным** `redirect_uri = https://playvalorant.com/opt_in`. Это
-домен Riot, не наш — у нас нет возможности заставить Riot редиректить
-сразу на `valorant-store://...`, потому что для этого нужен собственный
-OAuth-клиент, зарегистрированный в Riot Developer Portal с собственным
-redirect URI, а Riot такие клиенты сторонним разработчикам не выдаёт.
+For the release binary you can create a small wrapper script:
 
-Поэтому **полностью бесшовного "нажал — залогинился" пока не бывает ни у
-кого** — это ограничение API, а не реализации. То, что добавляет
-deep-link здесь — это возможность одним движением (поменять домен в адресной
-строке на свою схему и нажать Enter) подставить токен в приложение, вместо
-копирования в textarea. Сама механика OAuth-редиректа остаётся ручной.
+```bash
+#!/usr/bin/env bash
+GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 exec "$(dirname "$0")/valorant-store" "$@"
+```
 
-Что реально работает технически:
+Or add the variables to your `.desktop` launcher's `Exec=` line.
 
-- `tauri-plugin-deep-link` регистрирует схему `valorant-store://` в ОС
-  (`tauri.conf.json > plugins > deep-link > desktop > schemes`).
-- `tauri-plugin-single-instance` (фича `deep-link`) гарантирует, что если
-  приложение уже открыто, повторный запуск через схему не плодит второе
-  окно, а форвардит URL в уже работающее.
-- `src/pages/DeepLinkListener.tsx` слушает событие что на старте
-  (`getCurrent()`), что в рантайме (`onOpenUrl()`) — оба пути ведут в один
-  и тот же `token_login`.
+### Build for production
 
-## Известные ограничения / TODO
+```bash
+npm run tauri build
+```
 
-- `RedirectPage` (`/redirect`) — тот же самый кейс "свой redirect URI",
-  только реализованный через HTTP-роут внутри SPA, а не через ОС-схему.
-  Полезен, только если когда-нибудь появится собственный OAuth-клиент с
-  http(s)-redirect URI, который физически открывает приложение (например,
-  через `tauri-plugin-deep-link`'s App Links/Universal Links для
-  верифицированного домена). Сейчас не задействован ни одной кнопкой в UI.
-- На macOS схема прописывается в Info.plist на этапе сборки (это делает
-  `tauri-plugin-deep-link` сам по конфигу из `tauri.conf.json`), но
-  динамическая регистрация схемы в рантайме там не работает — тестировать
-  deep link на macOS можно только в собранном `.app`, установленном в
-  `/Applications`, не в `tauri dev`. На Windows/Linux работает и в `dev`.
-- Rust-код не компилировался в среде с актуальным тулчейном (тут был
-  доступен только `rustc 1.75` из `apt`, слишком старый для современных
-  крейтов вроде `idna_adapter`/`indexmap`, не говоря о самих плагинах
-  Tauri). 
-- Обязательно прогони `cargo check` локально перед первым запуском.
+Binaries and installers are written to `src-tauri/target/release/bundle/`.
+
+---
+
+## Login
+
+The app uses the **browser token flow** only — no Riot Client lockfile required.
+
+1. Click **"Browser fallback: open Riot login"** — your system browser opens Riot's auth page.
+2. Sign in with your Riot account.
+3. You'll land on `https://playvalorant.com/opt_in#access_token=...`
+4. Copy the full URL from the address bar and paste it back into the app.
+
+### Deep-link auto-login (faster)
+
+Instead of copying the URL, you can let the app capture the token automatically:
+
+1. Click **"Browser fallback: open Riot login"** and sign in.
+2. When the browser shows `playvalorant.com/opt_in`, click the address bar,
+   replace `https://playvalorant.com/opt_in` with `valorant-store://auth`,
+   and press **Enter**.
+3. The OS will hand the URL to the app and log you in without any copy-pasting.
+
+> **Tip:** you only need to sign in again when the daily shop has refreshed
+> (every ~24 h). The session is saved on disk and restored automatically.
+
+---
+
+## Project structure
+
+```
+├── src/                    # React frontend (Vite)
+│   ├── context/            # Theme + Language providers
+│   ├── lib/
+│   │   └── valorant.ts     # Session & region storage (tauri-plugin-store)
+│   └── pages/
+│       ├── HomePage.tsx    # Daily shop + Night Market
+│       ├── LoginPage.tsx   # Auth flow
+│       ├── DeepLinkListener.tsx  # Deep-link handler (mounted at root)
+│       └── RedirectPage.tsx      # Handles the OAuth redirect URL
+└── src-tauri/
+    ├── src/
+    │   ├── valorant.rs     # All Riot API logic (reqwest, async)
+    │   ├── commands.rs     # Tauri commands exposed to the frontend
+    │   ├── types.rs        # Shared Serde types
+    │   └── error.rs        # Unified error type
+    └── capabilities/
+        └── default.json    # IPC permission scopes
+```
+
+---
+
+## Known limitations
+
+- **Lockfile login** (reading the Riot Client's local port/token) is not
+  implemented. The browser token flow works fine for a standalone desktop app.
+- **Night Market timer** is not available — Riot doesn't expose a public
+  schedule. The section simply shows a placeholder when no Night Market is
+  active.
+- The Riot API occasionally changes endpoints; if the shop fails to load,
+  check [Issues](../../issues) for updates.
+
+---
+
+## Disclaimer
+
+This project is not affiliated with or endorsed by Riot Games.  
+Valorant and all related assets are property of Riot Games, Inc.

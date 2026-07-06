@@ -1,12 +1,21 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-
-import { saveStoredSession, type ShopSession } from "@/lib/valorant";
-import { useTranslation, useLanguage, type SupportedLanguage } from "@/context/LanguageContext";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  useTranslation,
+  useLanguage,
+  type SupportedLanguage,
+} from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
+import {
+  saveStoredSession,
+  saveStoredRegion,
+  readStoredRegion,
+  type ShopSession,
+} from "@/lib/valorant";
 
-type RegionValue = "auto" | "eu" | "na" | "ap" | "kr" | "latam" | "br";
+const REGIONS = ["auto", "na", "eu", "ap", "kr", "br", "latam", "pbe"];
 
 const LANG_FLAGS: { code: SupportedLanguage; flag: string; label: string }[] = [
   { code: "en", flag: "🇺🇸", label: "English" },
@@ -15,73 +24,76 @@ const LANG_FLAGS: { code: SupportedLanguage; flag: string; label: string }[] = [
   { code: "pl", flag: "🇵🇱", label: "Polski" },
 ];
 
-function readErrorMessage(payload: unknown): string {
-  if (typeof payload === "object" && payload !== null) {
-    const p = payload as Record<string, unknown>;
-    if (typeof p.detail === "string") return p.detail;
-    if (typeof p.message === "string") return p.message;
-  }
-  return String(payload);
-}
+type LocationState = { error?: string } | null;
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeError = (location.state as LocationState)?.error ?? null;
+
   const t = useTranslation();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
 
-  const [region, setRegion] = useState<RegionValue>("auto");
-  const [browserInput, setBrowserInput] = useState("");
-  const [browserLoading, setBrowserLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [region, setRegion] = useState("auto");
+  const [token, setToken] = useState("");
+  const [loading, setLoading] = useState(false);
+  // Initialise error with any message passed via router state
+  // (e.g. a failed deep-link login attempt from DeepLinkListener).
+  const [error, setError] = useState<string | null>(routeError);
 
-  const riotAuthUrl = useMemo(
-    () =>
-      "https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&nonce=1&prompt=login&ui_locales=en&redirect_uri=https://playvalorant.com/opt_in&response_type=token+id_token&scope=account+openid&response_mode=fragment",
-    [],
-  );
-
+  // Restore the previously used region from persistent storage.
   useEffect(() => {
-    window.sessionStorage.setItem("valorant-region", region);
-  }, [region]);
+    readStoredRegion().then(setRegion);
+  }, []);
 
-  const submitBrowserLogin = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const token = browserInput.trim().match(/access_token=([^&]+)/)?.[1] ?? browserInput.trim();
-    if (!token) {
-      setError("Paste an access_token, session id, or full redirect URL.");
-      return;
-    }
+  // Persist region whenever the user changes it.
+  const handleRegionChange = (r: string) => {
+    setRegion(r);
+    saveStoredRegion(r);
+  };
 
-    setBrowserLoading(true);
+  const submitBrowserLogin = async () => {
+    const raw = token.trim();
+    if (!raw) return;
+
+    const match =
+      raw.match(/access_token=([^&#]+)/) ||
+      raw.match(/^(ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/);
+    const accessToken = match ? decodeURIComponent(match[1]) : raw;
+
+    setLoading(true);
     setError(null);
-
     try {
       const session = await invoke<ShopSession>("token_login", {
-        accessToken: token,
+        accessToken,
         region,
       });
-      saveStoredSession(session);
-      navigate("/");
-    } catch (cause) {
-      setError(typeof cause === "string" ? cause : readErrorMessage(cause));
+      await saveStoredSession(session);
+      navigate("/", { replace: true });
+    } catch (e) {
+      setError(String(e));
     } finally {
-      setBrowserLoading(false);
+      setLoading(false);
     }
   };
 
-  return (
-    <main className="min-h-screen bg-theme-base flex items-center justify-center p-4 text-theme-primary">
-      <div className="w-full max-w-md rounded-2xl border border-theme bg-theme-surface p-8 shadow-2xl">
-        <div className="mb-6 h-1 w-full rounded-full" style={{ background: "var(--accent-red)" }} />
+  const openRiotLogin = () => {
+    void openUrl(
+      "https://auth.riotgames.com/authorize?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&client_id=play-valorant-web-prod&response_type=token%20id_token&nonce=1&scope=account%20ban%20link%20lol%20offline_access%20openid"
+    );
+  };
 
-        <div className="flex items-center justify-between mb-1">
-          <h1 className="text-3xl font-bold text-theme-primary">{t("loginTitle")}</h1>
-          <div className="flex items-center gap-1">
+  return (
+    <main className="min-h-screen bg-theme-base flex items-center justify-center p-6">
+      <div className="w-full max-w-sm space-y-6">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <div className="h-1 w-8 rounded-full" style={{ background: "var(--accent-red)" }} />
+          <div className="flex items-center gap-2">
             <button
               onClick={toggleTheme}
               className="theme-toggle"
-              title={t("theme") + ": " + t(("theme" + theme.charAt(0).toUpperCase() + theme.slice(1)) as any)}
               aria-label="Toggle theme"
             >
               {theme === "dark" ? "🌙" : theme === "white" ? "⚪" : "☕"}
@@ -100,75 +112,78 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className="text-center text-sm text-theme-secondary mb-6">{t("loginDesc")}</p>
-
-        {error ? (
-          <div
-            className="mb-4 rounded-lg border p-3 text-sm"
-            style={{
-              borderColor: "rgba(239,68,68,0.3)",
-              background: "rgba(239,68,68,0.08)",
-              color: "var(--accent-red)",
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
-
-        <div>
-          <label className="mb-2 block text-sm font-medium text-theme-secondary">{t("loginRegion")}</label>
-          <select
-            value={region}
-            onChange={(e) => setRegion(e.target.value as RegionValue)}
-            className="w-full rounded-lg border border-theme bg-theme-input px-4 py-3 text-theme-primary focus:outline-none"
-            style={{ borderColor: "var(--border-default)" }}
-          >
-            <option value="auto">Auto</option>
-            <option value="eu">EU</option>
-            <option value="na">NA</option>
-            <option value="ap">AP</option>
-            <option value="kr">KR</option>
-            <option value="latam">LATAM</option>
-            <option value="br">BR</option>
-          </select>
+        {/* Title */}
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-theme-primary">{t("loginTitle")}</h1>
+          <p className="mt-2 text-sm text-theme-secondary">{t("loginDesc")}</p>
         </div>
 
-        <div className="my-6 border-t pt-6" style={{ borderColor: "var(--border-subtle)" }}>
-          <a
-            href={riotAuthUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-full rounded-lg bg-theme-elevated px-4 py-3 text-center text-sm font-bold text-theme-primary transition-colors hover:opacity-80"
+        {/* Region selector */}
+        <div className="space-y-2">
+          <label className="block text-xs font-medium uppercase tracking-wider text-theme-secondary">
+            {t("loginRegion")}
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {REGIONS.map((r) => (
+              <button
+                key={r}
+                onClick={() => handleRegionChange(r)}
+                className={`rounded-md border px-3 py-1.5 text-xs font-mono uppercase transition-colors ${
+                  region === r
+                    ? "border-red-500/60 bg-red-500/10 text-accent-red"
+                    : "border-theme bg-theme-elevated text-theme-secondary hover:border-theme-subtle"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Browser fallback */}
+        <div className="space-y-3">
+          <button
+            onClick={openRiotLogin}
+            className="w-full rounded-xl border border-theme bg-theme-surface py-3 text-sm font-medium text-theme-primary transition-all hover:border-red-500/40 hover:bg-red-500/5"
           >
             {t("loginBrowserBtn")}
-          </a>
+          </button>
 
-          <form onSubmit={submitBrowserLogin} className="mt-4 space-y-3">
-            <label className="block text-sm font-medium text-theme-secondary">{t("loginPasteLabel")}</label>
-            <textarea
-              value={browserInput}
-              onChange={(e) => setBrowserInput(e.target.value)}
-              className="min-h-28 w-full rounded-lg border border-theme bg-theme-input px-4 py-3 text-sm text-theme-primary placeholder-theme-muted focus:outline-none"
-              placeholder="https://playvalorant.com/opt_in/#access_token=..."
-            />
-            <button
-              type="submit"
-              disabled={browserLoading}
-              className="w-full rounded-lg py-3 font-bold transition-colors"
-              style={{
-                background: browserLoading ? "rgba(239,68,68,0.5)" : "var(--accent-red)",
-                color: "#fff",
-                cursor: browserLoading ? "not-allowed" : "pointer",
-              }}
-            >
-              {browserLoading ? t("loginPasteBtnLoading") : t("loginPasteBtn")}
-            </button>
-          </form>
+          <label className="block text-xs font-medium uppercase tracking-wider text-theme-secondary">
+            {t("loginPasteLabel")}
+          </label>
+          <textarea
+            value={token}
+            onChange={(e) => {
+              setToken(e.target.value);
+              setError(null);
+            }}
+            rows={3}
+            className="w-full resize-none rounded-xl border border-theme bg-theme-input px-4 py-3 text-sm text-theme-primary placeholder:text-theme-muted focus:border-red-500/40 focus:outline-none"
+            placeholder="https://playvalorant.com/opt_in#access_token=..."
+          />
 
-          <p className="mt-3 text-xs text-theme-muted">{t("loginDeepLinkTip")}</p>
+          {error && (
+            <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-accent-red">
+              {error}
+            </p>
+          )}
+
+          <button
+            onClick={submitBrowserLogin}
+            disabled={loading || !token.trim()}
+            className="w-full rounded-xl py-3 text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: "var(--accent-red)" }}
+          >
+            {loading ? t("loginPasteBtnLoading") : t("loginPasteBtn")}
+          </button>
         </div>
 
+        {/* Notes */}
         <p className="text-center text-xs text-theme-muted">{t("loginNote")}</p>
+        <p className="rounded-xl border border-theme-subtle bg-theme-surface px-4 py-3 text-xs text-theme-secondary leading-relaxed">
+          {t("loginDeepLinkTip")}
+        </p>
       </div>
     </main>
   );

@@ -1,8 +1,11 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-
-import { saveStoredSession, type ShopSession } from "@/lib/valorant";
+import {
+  saveStoredSession,
+  readStoredRegion,
+  type ShopSession,
+} from "@/lib/valorant";
 import { useTranslation } from "@/context/LanguageContext";
 
 export default function RedirectPage() {
@@ -11,7 +14,7 @@ export default function RedirectPage() {
 
   useEffect(() => {
     const hash = window.location.hash || window.location.search;
-    const match = hash.match(/access_token=([^&]+)/);
+    const match = hash.match(/access_token=([^&#]+)/);
 
     if (!match?.[1]) {
       navigate("/login", { replace: true });
@@ -19,15 +22,17 @@ export default function RedirectPage() {
     }
 
     const accessToken = decodeURIComponent(match[1]);
-    const region = window.sessionStorage.getItem("valorant-region") || "auto";
 
     (async () => {
+      // Read the stored region preference instead of sessionStorage
+      // so the redirect page works even after an app restart.
+      const region = await readStoredRegion();
       try {
         const session = await invoke<ShopSession>("token_login", {
           accessToken,
           region,
         });
-        saveStoredSession(session);
+        await saveStoredSession(session);
         navigate("/", { replace: true });
       } catch {
         navigate("/login", { replace: true });

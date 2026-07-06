@@ -16,7 +16,6 @@ const RIOT_USER_AGENT: &str =
 const REGIONS: [&str; 6] = ["eu", "na", "ap", "kr", "latam", "br"];
 const VP_CURRENCY_ID: &str = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741";
 
-/// Same base64 blob the Python backend built once at import time from
 const CLIENT_PLATFORM: &str = "eyJwbGF0Zm9ybVR5cGUiOiJQQyIsInBsYXRmb3JtT1MiOiJXaW5kb3dzIiwicGxhdGZvcm1PU1ZlcnNpb24iOiIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwicGxhdGZvcm1DaGlwc2V0IjoiVW5rbm93biJ9";
 
 pub fn normalize_region(value: Option<String>) -> RiotResult<Option<String>> {

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useTranslation, useLanguage, type SupportedLanguage } from "@/context/LanguageContext";
+import {
+  useTranslation,
+  useLanguage,
+  type SupportedLanguage,
+} from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-
 import {
   clearStoredSession,
   readStoredSession,
@@ -11,14 +14,14 @@ import {
   type ShopSession,
 } from "@/lib/valorant";
 
-/* ─── Helpers ────────────────────────────────── */
+/* ─── Helpers ───────────────────────────────────── */
 
 function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
-  const hours = String(Math.floor(total / 3600)).padStart(2, "0");
-  const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
-  const secs = String(total % 60).padStart(2, "0");
-  return `${hours}:${minutes}:${secs}`;
+  const h = String(Math.floor(total / 3600)).padStart(2, "0");
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+  const s = String(total % 60).padStart(2, "0");
+  return `${h}:${m}:${s}`;
 }
 
 function calcRemaining(original: number, loadTime: number): number {
@@ -27,18 +30,18 @@ function calcRemaining(original: number, loadTime: number): number {
 }
 
 function formatPrice(value: number | undefined | null): string {
-  if (value === undefined || value === null) return "--";
+  if (value == null) return "--";
   return value.toLocaleString();
 }
 
 // In a Tauri webview a plain <a target="_blank"> just gets swallowed —
-// there's no browser tab to open it in. openUrl() from the opener plugin
-// hands the URL to the OS's default browser instead.
+// openUrl() hands the URL to the OS's default browser instead.
 function searchSkinOnGoogle(name: string) {
   void openUrl(`https://www.google.com/search?q=Valorant+${encodeURIComponent(name)}`);
 }
 
-/* ─── Language flags config ──────────────────── */
+/* ─── Language flags config ─────────────────────── */
+
 const LANG_FLAGS: { code: SupportedLanguage; flag: string; label: string }[] = [
   { code: "en", flag: "🇺🇸", label: "English" },
   { code: "uk", flag: "🇺🇦", label: "Українська" },
@@ -46,173 +49,155 @@ const LANG_FLAGS: { code: SupportedLanguage; flag: string; label: string }[] = [
   { code: "pl", flag: "🇵🇱", label: "Polski" },
 ];
 
-/* ─── PriceCard component ────────────────────── */
-function PriceCard({
+/* ─── Unified SkinCard ──────────────────────────── */
+
+type CardVariant = "daily" | "night";
+type TFn = ReturnType<typeof useTranslation>;
+
+function SkinCard({
   item,
   loadTime,
   t,
+  variant,
 }: {
   item: ShopItem;
   loadTime: number;
-  t: (key: any) => string;
+  t: TFn;
+  variant: CardVariant;
 }) {
   const remaining = calcRemaining(item.remaining, loadTime);
-  const displayPrice = item.discountedPrice ?? item.price;
+  const isNight = variant === "night";
+
+  const badge = isNight
+    ? `-${item.discountPercent ?? 0}%`
+    : item.discountPercent
+    ? `-${item.discountPercent}%`
+    : t("daily");
 
   return (
     <article className="shop-card">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <h3 className="card-title text-theme-primary">{item.name}</h3>
-        <span className="card-badge">
-          {item.discountPercent ? `-${item.discountPercent}%` : t("daily")}
-        </span>
-      </div>
-
-      <button
-        onClick={() => searchSkinOnGoogle(item.name)}
-        className="rounded-lg border border-theme-subtle overflow-hidden flex items-center justify-center bg-theme-base relative group block w-full transition-transform hover:scale-[1.02] cursor-pointer"
-        style={{ aspectRatio: "16/9" }}
-        title={`Search ${item.name} on Google`}
-        aria-label={`Search ${item.name} on Google`}
-      >
-        <img src={item.image} alt={item.name} className="max-h-full max-w-full object-contain" />
-      </button>
-
-      <div className="card-price-row">
-        <div className="text-theme-secondary text-sm">
-          {item.originalPrice !== undefined && item.originalPrice !== null ? (
-            <span className="line-through">{formatPrice(item.originalPrice)} VP</span>
-          ) : (
-            <span>
-              {t("updatingIn")} {formatDuration(remaining)}
-            </span>
-          )}
-        </div>
-        <div className="font-bold text-accent-gold">{formatPrice(displayPrice)} VP</div>
-      </div>
-    </article>
-  );
-}
-
-/* ─── Night market card ──────────────────────── */
-function NightCard({
-  item,
-  loadTime,
-  t,
-}: {
-  item: ShopItem;
-  loadTime: number;
-  t: (key: any) => string;
-}) {
-  const remaining = calcRemaining(item.remaining, loadTime);
-
-  return (
-    <article className="shop-card">
+      {/* Title + badge */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <h3 className="card-title text-theme-primary">{item.name}</h3>
         <span
           className="card-badge"
-          style={{ color: "var(--accent-purple)", background: "rgba(168,85,247,0.08)", borderColor: "rgba(168,85,247,0.25)" }}
+          style={
+            isNight
+              ? {
+                  color: "var(--accent-purple)",
+                  background: "rgba(168,85,247,0.08)",
+                  borderColor: "rgba(168,85,247,0.25)",
+                }
+              : {}
+          }
         >
-          -{item.discountPercent}%
+          {badge}
         </span>
       </div>
 
+      {/* Skin image — clicking searches Google */}
       <button
         onClick={() => searchSkinOnGoogle(item.name)}
-        className="rounded-lg border border-theme-subtle overflow-hidden flex items-center justify-center bg-theme-base relative group block w-full transition-transform hover:scale-[1.02] cursor-pointer"
+        className="rounded-lg border border-theme-subtle overflow-hidden flex items-center justify-center bg-theme-base block w-full transition-transform hover:scale-[1.02] cursor-pointer"
         style={{ aspectRatio: "16/9" }}
         title={`Search ${item.name} on Google`}
         aria-label={`Search ${item.name} on Google`}
       >
-        <img src={item.image} alt={item.name} className="max-h-full max-w-full object-contain" />
+        <img
+          src={item.image}
+          alt={item.name}
+          className="max-h-full max-w-full object-contain"
+        />
       </button>
 
-      <div className="mt-4 text-sm">
-        <div className="text-theme-secondary line-through">{formatPrice(item.originalPrice)} VP</div>
-        <div className="font-bold text-accent-gold">{formatPrice(item.discountedPrice)} VP</div>
-        <div className="mt-1 text-theme-muted">
-          {t("endingIn")} {formatDuration(remaining)}
+      {/* Price row */}
+      {isNight ? (
+        <div className="mt-4 text-sm">
+          <div className="text-theme-secondary line-through">
+            {formatPrice(item.originalPrice)} VP
+          </div>
+          <div className="font-bold text-accent-gold">
+            {formatPrice(item.discountedPrice)} VP
+          </div>
+          <div className="mt-1 text-theme-muted">
+            {t("endingIn")} {formatDuration(remaining)}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="card-price-row">
+          <div className="text-theme-secondary text-sm">
+            {item.originalPrice != null ? (
+              <span className="line-through">
+                {formatPrice(item.originalPrice)} VP
+              </span>
+            ) : (
+              <span>
+                {t("updatingIn")} {formatDuration(remaining)}
+              </span>
+            )}
+          </div>
+          <div className="font-bold text-accent-gold">
+            {formatPrice(item.discountedPrice ?? item.price)} VP
+          </div>
+        </div>
+      )}
     </article>
   );
 }
 
-/* ─── Night market placeholder ───────────────── */
-function NightMarketPlaceholder({ t }: { t: (key: any) => string }) {
-  const [timeLeft, setTimeLeft] = useState("");
+/* ─── Night market placeholder ──────────────────── */
 
-  useEffect(() => {
-    const now = new Date();
-    let targetDate = new Date(now.getFullYear(), now.getMonth(), 28);
-    if (targetDate <= now) {
-      targetDate = new Date(now.getFullYear(), now.getMonth() + 1, 28);
-    }
-
-    const updateTimer = () => {
-      const diff = targetDate.getTime() - Date.now();
-      if (diff <= 0) {
-        setTimeLeft("00:00:00:00");
-        return;
-      }
-      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
-      const m = Math.floor((diff / 1000 / 60) % 60);
-      const s = Math.floor((diff / 1000) % 60);
-      setTimeLeft(
-        `${String(d).padStart(2, "0")}:${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`,
-      );
-    };
-
-    updateTimer();
-    const id = setInterval(updateTimer, 1000);
-    return () => clearInterval(id);
-  }, []);
-
+function NightMarketPlaceholder({ t }: { t: TFn }) {
   return (
-    <div className="night-placeholder flex flex-col items-center justify-center text-center p-8 rounded-xl">
-      <div style={{ fontSize: "3.5rem", marginBottom: "1rem", filter: "drop-shadow(0 0 24px rgba(168,85,247,0.5))" }}>
+    <div className="night-placeholder">
+      <div
+        style={{
+          fontSize: "3.5rem",
+          marginBottom: "1rem",
+          filter: "drop-shadow(0 0 24px rgba(168,85,247,0.5))",
+        }}
+      >
         🌙
       </div>
-      <h3 className="text-xl font-bold mb-2" style={{ color: "var(--accent-purple)" }}>
+      <h3
+        className="text-xl font-bold mb-2"
+        style={{ color: "var(--accent-purple)" }}
+      >
         {t("nightMarketUnavailable")}
       </h3>
-      <p className="text-theme-secondary text-sm max-w-xs mb-6">{t("nightMarketUnavailableDesc")}</p>
-      {timeLeft && (
-        <div className="flex flex-col items-center mt-2">
-          <span className="text-xs text-theme-muted uppercase tracking-wider mb-2">{t("updatingIn")}</span>
-          <div className="text-2xl font-mono font-bold text-accent-purple bg-theme-surface border border-theme px-6 py-3 rounded-lg shadow-inner">
-            {timeLeft}
-          </div>
-        </div>
-      )}
+      <p className="text-theme-secondary text-sm max-w-xs">
+        {t("nightMarketUnavailableDesc")}
+      </p>
     </div>
   );
 }
 
-/* ─── Main page ──────────────────────────────── */
+/* ─── Main page ─────────────────────────────────── */
+
 export default function HomePage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<ShopSession | null>(null);
   const [, setTick] = useState(0);
+  // loadTimeRef holds the timestamp from when the session was originally
+  // fetched (possibly in a previous run). This keeps timers accurate across
+  // app restarts.
   const loadTimeRef = useRef<number>(0);
   const t = useTranslation();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    const stored = readStoredSession();
-    if (!stored) {
-      navigate("/login", { replace: true });
-    } else {
-      setSession(stored);
-      if (loadTimeRef.current === 0) {
-        loadTimeRef.current = Date.now();
+    readStoredSession().then((stored) => {
+      if (!stored) {
+        navigate("/login", { replace: true });
+      } else {
+        setSession(stored.session);
+        loadTimeRef.current = stored.loadedAt;
       }
-    }
+    });
   }, [navigate]);
 
+  // Tick every second so countdown timers re-render.
   useEffect(() => {
     if (!session) return;
     const id = setInterval(() => setTick((p) => p + 1), 1000);
@@ -230,7 +215,11 @@ export default function HomePage() {
         <div className="text-center space-y-4">
           <div
             className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-t-transparent"
-            style={{ borderRightColor: "var(--accent-red)", borderBottomColor: "var(--accent-red)", borderLeftColor: "var(--accent-red)" }}
+            style={{
+              borderRightColor: "var(--accent-red)",
+              borderBottomColor: "var(--accent-red)",
+              borderLeftColor: "var(--accent-red)",
+            }}
           />
           <p className="text-theme-secondary text-sm">{t("loading")}</p>
         </div>
@@ -240,6 +229,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-theme-base p-6 md:p-10 text-theme-primary">
+      {/* Header */}
       <header className="max-w-7xl mx-auto mb-10 flex flex-col gap-4 rounded-2xl border border-theme bg-theme-surface p-6 shadow-xl md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-theme-primary">
@@ -259,7 +249,19 @@ export default function HomePage() {
           <button
             onClick={toggleTheme}
             className="theme-toggle"
-            title={t("theme") + ": " + t(("theme" + theme.charAt(0).toUpperCase() + theme.slice(1)) as any)}
+            title={
+              t("theme") +
+              ": " +
+              t(
+                ("theme" +
+                  theme.charAt(0).toUpperCase() +
+                  theme.slice(1)) as keyof ReturnType<typeof useTranslation> extends (
+                  k: infer K
+                ) => string
+                  ? K
+                  : never
+              )
+            }
             aria-label="Toggle theme"
           >
             {theme === "dark" ? "🌙" : theme === "white" ? "⚪" : "☕"}
@@ -288,29 +290,53 @@ export default function HomePage() {
         </div>
       </header>
 
+      {/* Daily shop */}
       <section className="max-w-7xl mx-auto">
-        <div className="mb-6 flex items-center gap-2 text-theme-secondary">
-          <span className="h-2 w-2 rounded-full bg-accent-red" style={{ background: "var(--accent-red)" }} />
-          <h2 className="text-xl font-bold uppercase tracking-wider text-theme-primary">{t("dailyShop")}</h2>
+        <div className="mb-6 flex items-center gap-2">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: "var(--accent-red)" }}
+          />
+          <h2 className="text-xl font-bold uppercase tracking-wider text-theme-primary">
+            {t("dailyShop")}
+          </h2>
         </div>
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {session.shop.daily.map((item) => (
-            <PriceCard key={item.uuid} item={item} loadTime={loadTimeRef.current} t={t} />
+            <SkinCard
+              key={item.uuid}
+              item={item}
+              loadTime={loadTimeRef.current}
+              t={t}
+              variant="daily"
+            />
           ))}
         </div>
       </section>
 
+      {/* Night market */}
       <section className="max-w-7xl mx-auto mt-12">
-        <div className="mb-6 flex items-center gap-2 text-theme-secondary">
-          <span className="h-2 w-2 rounded-full" style={{ background: "var(--accent-purple)" }} />
-          <h2 className="text-xl font-bold uppercase tracking-wider text-theme-primary">{t("nightMarket")}</h2>
+        <div className="mb-6 flex items-center gap-2">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: "var(--accent-purple)" }}
+          />
+          <h2 className="text-xl font-bold uppercase tracking-wider text-theme-primary">
+            {t("nightMarket")}
+          </h2>
         </div>
 
         {session.shop.night.length > 0 ? (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {session.shop.night.map((item) => (
-              <NightCard key={item.uuid} item={item} loadTime={loadTimeRef.current} t={t} />
+              <SkinCard
+                key={item.uuid}
+                item={item}
+                loadTime={loadTimeRef.current}
+                t={t}
+                variant="night"
+              />
             ))}
           </div>
         ) : (
