@@ -2,7 +2,7 @@
 name = "valorant-store-tauri"
 version = "0.1.0"
 description = "Valorant Store — view your daily shop and night market without opening the game"
-edition = "2021"
+edition = "2026"
 
 [lib]
 name = "valorant_store_tauri_lib"
